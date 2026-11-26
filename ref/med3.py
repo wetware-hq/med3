@@ -26,6 +26,7 @@ BYTES32 = re.compile(r"^0x[0-9a-f]{64}$")
 ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
 PAYMENT_ID = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
 BASES_RUN = re.compile(r"[ACGT]{12,}")  # an order never carries a sequence
+MAX_BODY = 1 << 20  # a read-back loop is kilobytes; checkout carries no body
 WAIT = ("unprinted", "not_finalized", "holder_changed")  # close refusals that leave the hold in place
 CODES = (
     "bad_request", "bad_item", "unknown_token", "holder_changed", "bad_payment", "bad_offer", "expired",
@@ -362,6 +363,9 @@ def handler(m):
             try:
                 path = self.path.split("?", 1)[0]
                 n = int(self.headers.get("Content-Length") or 0)
+                if n < 0 or n > MAX_BODY:
+                    self.close_connection = True
+                    return self.send(413, {"error": "bad_request", "detail": f"body over {MAX_BODY} bytes"})
                 body = self.rfile.read(n).decode("utf-8", "replace") if n else ""
                 if path.startswith("/checkout/"):
                     item = path[10:]

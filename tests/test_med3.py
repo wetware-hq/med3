@@ -266,6 +266,7 @@ class TestHTTP(Base):
         s, _, b = self.call("POST", f"/checkout/{ITEM}", headers={"PAYMENT-SIGNATURE": "x"})
         self.assertEqual((s, json.loads(b)["error"]), (400, "bad_payment"))
         self.assertEqual(self.call("GET", "/orders/" + "0" * 32)[0], 404)
+        self.assertEqual(self.call("POST", f"/orders/{'0' * 32}/close", "x" * (med3.MAX_BODY + 1))[0], 413)
 
 
 class TestIndex(unittest.TestCase):
