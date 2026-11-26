@@ -190,6 +190,13 @@ class TestClose(Base):
         self.state["tokens"][LOCUS]["rows"].append({"receipt": self.receipt, "prints": 0, "holder": SELLER, "block": 1, "finalized": True})
         self.refused("stale_print", self.m.close, self.o["id"], SAMPLE)
 
+    def test_print_between_offer_and_checkout(self):
+        offer = self.m.offer(ITEM)
+        self.print_row(self.receipt)
+        o = self.m.checkout(ITEM, self.pay(offer, pid="pay-0000000000000003"))
+        self.assertEqual(o["order"]["prints"], 1)
+        self.refused("stale_print", self.m.close, o["id"], SAMPLE)
+
     def test_receipt_closes_one_order(self):
         self.print_row(self.receipt)
         self.m.close(self.o["id"], SAMPLE)

@@ -254,7 +254,7 @@ class Med3:
             order = {
                 "med3": self.c["med3"], "item": item_id, "dna": f"dna:{it['locus']}", "token": terms["token"],
                 "buyer": buyer, "seller": a["payTo"], "amount": a["amount"], "asset": a["asset"], "network": a["network"],
-                "prints": terms["prints"], "captureDeadline": a["extra"]["captureDeadline"],
+                "prints": max(terms["prints"], t["prints"]), "captureDeadline": a["extra"]["captureDeadline"],
                 "refundDeadline": a["extra"]["refundDeadline"], "payment": pid, "offer": ext["sig"],
             }
             root = sha(canon(order))
