@@ -52,7 +52,7 @@ A print item sells one new print of one chromosome by its holder, with the read-
 3. **Print.** The seller prints the sequence, sequences the print and writes a `loop1` read-back ([`web` §12](https://github.com/wetware-hq/web/blob/main/docs/follow-agent-contract.md)) whose last experiment is `hypothesis expect=intact`, `act op=reads`, `observe`. The seller calls Bases `polymerize(id, receipt)` with the loop's head as `receipt`.
 4. **Close.** `POST /orders/<id>/close` with the loop text as the body. The operator decides by §4 and calls the escrow's `capture` or `void`.
 
-The order is the canonical JSON (sorted keys, no whitespace, UTF-8) of `{med3, item, dna, token, buyer, seller, amount, asset, network, prints, captureDeadline, refundDeadline, payment, offer}`. `prints` is the larger of the offer's count and the chain's count at checkout, so a print made before the order cannot close it. Its root is `sha256` of those bytes and its id is the first 32 hex of the root, the same shape as a Bases token id. `GET /orders/<id>` returns `{id, root, order, status, log, head, receipt, reason}`.
+The order is the canonical JSON (sorted keys, no whitespace, UTF-8) of `{med3, item, dna, token, buyer, seller, amount, asset, network, prints, captureDeadline, refundDeadline, payment, offer}`. `prints` is the offer's count; the server also keeps the receipts already on chain at checkout, so a print made before the order cannot close it, and a print a reorg drops does not block one made after. Its root is `sha256` of those bytes and its id is the first 32 hex of the root, the same shape as a Bases token id. `GET /orders/<id>` returns `{id, root, order, status, log, head, receipt, reason}`.
 
 ## §4 Close
 
@@ -65,7 +65,7 @@ Checked in this order; the first that applies decides.
 | 3 | the loop is not loop1 (LF lines, frames numbered from 0, each with a kind), its head is not the chain over its blocks, or it does not end in an `expect=intact` read-back | refuse `bad_loop`, `bad_head` or `not_reads` |
 | 4 | the head already closed another order | refuse `receipt_used` |
 | 5 | no `Polymerized` row for the token carries the head as `receipt` | refuse `unprinted` (hold stays) |
-| 6 | the row's `prints` is not greater than the order's `prints` | refuse `stale_print` |
+| 6 | the row's `prints` is not greater than the order's `prints`, or its receipt was on chain at checkout | refuse `stale_print` |
 | 7 | the row's block is not finalized | refuse `not_finalized` (hold stays) |
 | 8 | the token's holder at the row is not the order's seller | refuse `holder_changed` (hold stays) |
 | 9 | the replayed verdict is `supports` | `captured`, reason `supports` |

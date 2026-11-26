@@ -201,8 +201,15 @@ class TestClose(Base):
         offer = self.m.offer(ITEM)
         self.print_row(self.receipt)
         o = self.m.checkout(ITEM, self.pay(offer, pid="pay-0000000000000003"))
-        self.assertEqual(o["order"]["prints"], 1)
         self.refused("stale_print", self.m.close, o["id"], SAMPLE)
+
+    def test_reorged_print_before_checkout(self):
+        offer = self.m.offer(ITEM)
+        self.print_row("0x" + "ee" * 32, finalized=False)
+        o = self.m.checkout(ITEM, self.pay(offer, pid="pay-0000000000000004"))
+        self.state["tokens"][LOCUS]["rows"] = []
+        self.print_row(self.receipt)
+        self.assertEqual(self.m.close(o["id"], SAMPLE)["status"], "captured")
 
     def test_receipt_closes_one_order(self):
         self.print_row(self.receipt)

@@ -264,13 +264,14 @@ class Med3:
             order = {
                 "med3": self.c["med3"], "item": item_id, "dna": f"dna:{it['locus']}", "token": terms["token"],
                 "buyer": buyer, "seller": a["payTo"], "amount": a["amount"], "asset": a["asset"], "network": a["network"],
-                "prints": max(terms["prints"], t["prints"]), "captureDeadline": a["extra"]["captureDeadline"],
+                "prints": terms["prints"], "captureDeadline": a["extra"]["captureDeadline"],
                 "refundDeadline": a["extra"]["refundDeadline"], "payment": pid, "offer": ext["sig"],
             }
             root = sha(canon(order))
             self.roots.append(root)
             o = {"id": root[:32], "root": root, "order": order, "status": "authorized", "body": body,
-                 "log": len(self.roots) - 1, "head": log_head(self.roots), "receipt": None, "reason": None}
+                 "log": len(self.roots) - 1, "head": log_head(self.roots), "receipt": None, "reason": None,
+                 "prior": sorted({r.get("receipt", "").lower() for r in t.get("rows", [])})}
             self.orders[o["id"]] = o
             self.payments[pid] = o["id"]
             return o
@@ -301,7 +302,7 @@ class Med3:
             if not rows:
                 raise Refusal("unprinted", "no Polymerized row carries this receipt")
             row = rows[0]
-            if row["prints"] <= od["prints"]:
+            if row["prints"] <= od["prints"] or receipt in o["prior"]:
                 raise Refusal("stale_print", f"print {row['prints']} is not after the order (prints={od['prints']})")
             if not row.get("finalized"):
                 raise Refusal("not_finalized", f"block {row.get('block')} is not final")
@@ -323,7 +324,7 @@ class Med3:
 
 
 def public(o):
-    return {k: v for k, v in o.items() if k != "body"}
+    return {k: v for k, v in o.items() if k not in ("body", "prior")}
 
 
 def handler(m):
