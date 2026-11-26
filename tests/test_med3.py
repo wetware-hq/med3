@@ -145,6 +145,13 @@ class TestCheckout(Base):
         self.refused("bad_payment", self.m.checkout, ITEM, self.pay(pid="short"))
         self.refused("bad_payment", self.m.checkout, ITEM, self.pay(payload={"authorization": {"from": "me"}, "signature": "0x01"}))
 
+    def test_malformed_metadata(self):
+        self.refused("bad_payment", self.m.checkout, ITEM, self.pay(extensions=["x"]))
+        self.refused("bad_payment", self.m.checkout, ITEM, self.pay(payload=[1]))
+        h = base64.b64encode(json.dumps({"x402Version": 2, "accepted": {}, "memo": "\ud800"}).encode()).decode()
+        self.refused("bad_payment", self.m.checkout, ITEM, h)
+        self.assertEqual(self.m.log()["roots"], [])
+
     def test_no_bases(self):
         self.refused("bad_base", self.m.checkout, ITEM, self.pay(memo="ACGTACGTACGTACGT"))
 

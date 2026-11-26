@@ -61,6 +61,10 @@ def unb64(s):
         raise Refusal("bad_payment", f"not base64 JSON: {e}") from None
 
 
+def obj(x):
+    return x if isinstance(x, dict) else {}
+
+
 def no_bases(obj):
     """Refuse any string holding a run of 12 or more uppercase ACGT: med3 never moves a sequence."""
     if isinstance(obj, str):
@@ -227,9 +231,14 @@ class Med3:
         p = unb64(header)
         if not isinstance(p, dict) or p.get("x402Version") != 2 or not isinstance(p.get("accepted"), dict):
             raise Refusal("bad_payment", "not an x402 v2 PaymentPayload")
+        try:
+            body = sha(canon(p))
+        except UnicodeEncodeError:
+            raise Refusal("bad_payment", "the payload is not valid UTF-8") from None
         no_bases(p)
-        ext = (p.get("extensions") or {}).get("med3") or {}
-        pid = (((p.get("extensions") or {}).get("payment-identifier") or {}).get("info") or {}).get("id", "")
+        exts = obj(p.get("extensions"))
+        ext = obj(exts.get("med3"))
+        pid = obj(obj(exts.get("payment-identifier")).get("info")).get("id", "")
         if not PAYMENT_ID.match(str(pid)):
             raise Refusal("bad_payment", "payment-identifier info.id is required")
         terms = {k: v for k, v in ext.items() if k != "sig"}
@@ -238,14 +247,14 @@ class Med3:
         with self.lock:
             if pid in self.payments:
                 o = self.orders[self.payments[pid]]
-                if o["body"] != sha(canon(p)):
+                if o["body"] != body:
                     raise Refusal("replay", "payment id reused with a different payload")
                 return o
             if now > terms["issued"] + p["accepted"]["maxTimeoutSeconds"]:
                 raise Refusal("expired", "the offer timed out")
-            auth = (p.get("payload") or {}).get("authorization") or {}
-            buyer = auth.get("from", "")
-            if not ADDRESS.match(buyer) or not (p.get("payload") or {}).get("signature"):
+            payload = obj(p.get("payload"))
+            buyer = obj(payload.get("authorization")).get("from", "")
+            if not isinstance(buyer, str) or not ADDRESS.match(buyer) or not payload.get("signature"):
                 raise Refusal("bad_payment", "payload.authorization.from and payload.signature are required")
             t = self.chain.token(it["locus"])
             if t["holder"].lower() != it["seller"].lower():
@@ -259,7 +268,7 @@ class Med3:
             }
             root = sha(canon(order))
             self.roots.append(root)
-            o = {"id": root[:32], "root": root, "order": order, "status": "authorized", "body": sha(canon(p)),
+            o = {"id": root[:32], "root": root, "order": order, "status": "authorized", "body": body,
                  "log": len(self.roots) - 1, "head": log_head(self.roots), "receipt": None, "reason": None}
             self.orders[o["id"]] = o
             self.payments[pid] = o["id"]
@@ -369,6 +378,8 @@ def handler(m):
                 self.send(404, {"error": "bad_request", "detail": path})
             except Refusal as r:
                 self.refuse(r)
+            except (ValueError, TypeError, KeyError, AttributeError) as e:
+                self.send(400, {"error": "bad_request", "detail": type(e).__name__})
 
         def log_message(self, *a):
             pass
