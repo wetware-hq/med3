@@ -119,8 +119,12 @@ def read_back(text):
     blocks, written = loop_blocks(text)
     if written != loop_head(blocks):
         raise Refusal("bad_head", f"head is {loop_head(blocks)}")
-    heads = [dict(p.split("=", 1) for p in b.split("\n", 1)[0].split()[3:] if "=" in p) | {"kind": b.split()[2]}
-             for b in blocks[1:] if len(b.split()) > 2]
+    heads = []
+    for i, b in enumerate(blocks[1:]):
+        parts = b.split("\n", 1)[0].split()
+        if len(parts) < 3 or parts[1] != str(i):
+            raise Refusal("bad_loop", f"frame {i} has no kind or is misnumbered")
+        heads.append(dict(p.split("=", 1) for p in parts[3:] if "=" in p) | {"kind": parts[2]})
     if len(heads) < 3 or [f["kind"] for f in heads[-3:]] != ["hypothesis", "act", "observe"]:
         raise Refusal("not_reads", "the loop does not end in a hypothesis, act, observe")
     hyp, act, obs = heads[-3:]
