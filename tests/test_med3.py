@@ -38,7 +38,7 @@ class Clock:
 class Base(unittest.TestCase):
     def setUp(self):
         self.cfg = json.loads((ROOT / "med3.json").read_text())
-        self.state = {"tokens": {LOCUS: {"holder": SELLER, "prints": 0, "rows": []}}}
+        self.state = {"block": 100, "tokens": {LOCUS: {"holder": SELLER, "prints": 0, "rows": []}}}
         self.clock = Clock()
         self.m = med3.Med3(self.cfg, med3.Chain(data=self.state), b"k" * 32, clock=self.clock)
 
@@ -56,7 +56,8 @@ class Base(unittest.TestCase):
     def print_row(self, receipt, prints=1, finalized=True, holder=SELLER):
         t = self.state["tokens"][LOCUS]
         t["prints"] = prints
-        t["rows"].append({"receipt": receipt, "prints": prints, "holder": holder, "block": 100 + prints, "finalized": finalized})
+        self.state["block"] += 1
+        t["rows"].append({"receipt": receipt, "prints": prints, "holder": holder, "block": self.state["block"], "finalized": finalized})
 
     def refused(self, code, f, *a):
         with self.assertRaises(med3.Refusal) as cm:
@@ -210,6 +211,14 @@ class TestClose(Base):
         self.state["tokens"][LOCUS]["rows"] = []
         self.print_row(self.receipt)
         self.assertEqual(self.m.close(o["id"], SAMPLE)["status"], "captured")
+
+    def test_reorg_reveals_print_before_checkout(self):
+        offer = self.m.offer(ITEM)
+        self.state["block"] += 1
+        o = self.m.checkout(ITEM, self.pay(offer, pid="pay-0000000000000005"))
+        self.state["tokens"][LOCUS]["rows"].append(
+            {"receipt": self.receipt, "prints": 1, "holder": SELLER, "block": 101, "finalized": True})
+        self.refused("stale_print", self.m.close, o["id"], SAMPLE)
 
     def test_receipt_closes_one_order(self):
         self.print_row(self.receipt)

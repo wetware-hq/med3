@@ -148,9 +148,14 @@ class Chain:
     def __init__(self, path=None, data=None):
         self.path, self.data = path, data
 
+    def read(self):
+        return json.loads(Path(self.path).read_text()) if self.path else (self.data or {})
+
+    def head(self):
+        return int(self.read().get("block", 0))
+
     def token(self, locus):
-        data = json.loads(Path(self.path).read_text()) if self.path else (self.data or {})
-        t = data.get("tokens", {}).get(locus)
+        t = self.read().get("tokens", {}).get(locus)
         if t is None:
             raise Refusal("unknown_token", f"dna:{locus} is not minted on this Bases")
         return t
@@ -264,14 +269,13 @@ class Med3:
             order = {
                 "med3": self.c["med3"], "item": item_id, "dna": f"dna:{it['locus']}", "token": terms["token"],
                 "buyer": buyer, "seller": a["payTo"], "amount": a["amount"], "asset": a["asset"], "network": a["network"],
-                "prints": terms["prints"], "captureDeadline": a["extra"]["captureDeadline"],
+                "prints": terms["prints"], "block": self.chain.head(), "captureDeadline": a["extra"]["captureDeadline"],
                 "refundDeadline": a["extra"]["refundDeadline"], "payment": pid, "offer": ext["sig"],
             }
             root = sha(canon(order))
             self.roots.append(root)
             o = {"id": root[:32], "root": root, "order": order, "status": "authorized", "body": body,
-                 "log": len(self.roots) - 1, "head": log_head(self.roots), "receipt": None, "reason": None,
-                 "prior": sorted({r.get("receipt", "").lower() for r in t.get("rows", [])})}
+                 "log": len(self.roots) - 1, "head": log_head(self.roots), "receipt": None, "reason": None}
             self.orders[o["id"]] = o
             self.payments[pid] = o["id"]
             return o
@@ -302,8 +306,8 @@ class Med3:
             if not rows:
                 raise Refusal("unprinted", "no Polymerized row carries this receipt")
             row = rows[0]
-            if row["prints"] <= od["prints"] or receipt in o["prior"]:
-                raise Refusal("stale_print", f"print {row['prints']} is not after the order (prints={od['prints']})")
+            if row["prints"] <= od["prints"] or int(row.get("block", 0)) <= od["block"]:
+                raise Refusal("stale_print", f"print {row['prints']} at block {row.get('block')} is not after the order (block {od['block']})")
             if not row.get("finalized"):
                 raise Refusal("not_finalized", f"block {row.get('block')} is not final")
             if row.get("holder", "").lower() != od["seller"].lower():
@@ -324,7 +328,7 @@ class Med3:
 
 
 def public(o):
-    return {k: v for k, v in o.items() if k not in ("body", "prior")}
+    return {k: v for k, v in o.items() if k != "body"}
 
 
 def handler(m):

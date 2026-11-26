@@ -52,7 +52,7 @@ A print item sells one new print of one chromosome by its holder, with the read-
 3. **Print.** The seller prints the sequence, sequences the print and writes a `loop1` read-back ([`web` §12](https://github.com/wetware-hq/web/blob/main/docs/follow-agent-contract.md)) whose last experiment is `hypothesis expect=intact`, `act op=reads`, `observe`. The seller calls Bases `polymerize(id, receipt)` with the loop's head as `receipt`.
 4. **Close.** `POST /orders/<id>/close` with the loop text as the body. The operator decides by §4 and calls the escrow's `capture` or `void`.
 
-The order is the canonical JSON (sorted keys, no whitespace, UTF-8) of `{med3, item, dna, token, buyer, seller, amount, asset, network, prints, captureDeadline, refundDeadline, payment, offer}`. `prints` is the offer's count; the server also keeps the receipts already on chain at checkout, so a print made before the order cannot close it, and a print a reorg drops does not block one made after. Its root is `sha256` of those bytes and its id is the first 32 hex of the root, the same shape as a Bases token id. `GET /orders/<id>` returns `{id, root, order, status, log, head, receipt, reason}`.
+The order is the canonical JSON (sorted keys, no whitespace, UTF-8) of `{med3, item, dna, token, buyer, seller, amount, asset, network, prints, block, captureDeadline, refundDeadline, payment, offer}`. `prints` is the offer's count and `block` is the chain head at checkout; only a print in a later block can close the order, so a print made before checkout cannot, even one a reorg brings back. Its root is `sha256` of those bytes and its id is the first 32 hex of the root, the same shape as a Bases token id. `GET /orders/<id>` returns `{id, root, order, status, log, head, receipt, reason}`.
 
 ## §4 Close
 
@@ -65,14 +65,14 @@ Checked in this order; the first that applies decides.
 | 3 | the loop is not loop1 (LF lines, frames numbered from 0, each with a kind), its head is not the chain over its blocks, or it does not end in an `expect=intact` read-back | refuse `bad_loop`, `bad_head` or `not_reads` |
 | 4 | the head already closed another order | refuse `receipt_used` |
 | 5 | no `Polymerized` row for the token carries the head as `receipt` | refuse `unprinted` (hold stays) |
-| 6 | the row's `prints` is not greater than the order's `prints`, or its receipt was on chain at checkout | refuse `stale_print` |
+| 6 | the row's `prints` is not greater than the order's `prints`, or its `block` is not after the order's `block` | refuse `stale_print` |
 | 7 | the row's block is not finalized | refuse `not_finalized` (hold stays) |
 | 8 | the token's holder at the row is not the order's seller | refuse `holder_changed` (hold stays) |
 | 9 | the replayed verdict is `supports` | `captured`, reason `supports` |
 | 10 | the replayed verdict is `refutes` | `voided`, reason `refutes` |
 
 - **Replay.** A live operator MUST replay the loop (web `ref/loop.py verify`) from the sequence and the reads before step 9, since the verdict is computed, never written. The sequence and reads stay with the seller and the operator; med3 never stores them. `ref/med3.py` checks the head, the frame shape and the written verdict only, and says so.
-- **Chain view.** Bases chains print heads with keccak256, so rows come from an indexer over `Polymerized(id, by, receipt, prints, head)` events, with `ownerOf(id)` at the row's block as `holder`. "Finalized" is the chain's finalized tag, not a confirmation count.
+- **Chain view.** Bases chains print heads with keccak256, so rows come from an indexer over `Polymerized(id, by, receipt, prints, head)` events, with `ownerOf(id)` at the row's block as `holder`. "Finalized" is the chain's finalized tag, not a confirmation count. The view also gives the chain head `block`, which checkout writes into the order.
 - **Deadlines.** `captureDeadline` < `refundDeadline`. Between them the operator may `refund` a captured order the buyer disputes; after `captureDeadline` the buyer may `reclaim` an uncaptured hold directly from the escrow, so a dead operator cannot freeze funds.
 - **One receipt, one order.** A print closes at most one order, so a seller cannot sell one print twice.
 
