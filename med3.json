@@ -1,0 +1,26 @@
+{
+  "med3": "1.0.0",
+  "network": "eip155:84532",
+  "bases": "0x0000000000000000000000000000000000000000",
+  "asset": {"address": "0x036CbD53842c5426634e7929541eC2318f3dCF7e", "name": "USDC", "version": "2", "decimals": 6},
+  "escrow": {
+    "authCaptureEscrow": "0xf96815976523E00e65Be8f34cA5e64b4f41EB19c",
+    "captureAuthorizer": "0x0000000000000000000000000000000000000000",
+    "operatorType": "custom",
+    "captureMode": "deferred",
+    "assetTransferMethod": "eip3009",
+    "captureWindowSeconds": 1209600,
+    "refundWindowSeconds": 2592000,
+    "maxTimeoutSeconds": 60,
+    "feeBps": 0
+  },
+  "items": [
+    {
+      "kind": "print",
+      "locus": "00000000000000000000000000000001",
+      "price": "1000000",
+      "seller": "0x1111111111111111111111111111111111111111",
+      "title": "one print of dna:00000000000000000000000000000001 with its read-back loop"
+    }
+  ]
+}

@@ -1,0 +1,188 @@
+::meta
+title: med3 route and rule index
+version: 1
+updated: 2026-11-27
+domain: med3|commerce|escrow
+scope: all
+governs: med3.md
+checksum: sha256:7f95f4373bf34b29a024292ad88e4dcac9d134964ebaf2e0c6b0b9e0e2e22db0
+::end
+
+::schema
+node-types: [route, rule, source, meta]
+edge-types: [requires, precedes, cites]
+scope-levels: [all, buyer, seller, operator]
+::end
+
+::index
+# id | type | scope | conf | keywords
+banner | meta | all | 1.00 | research, testnet, no-clinical
+discover | route | all | 1.00 | well-known-ucp, catalog, profile, payment-handler
+offer | route | buyer | 1.00 | 402, auth-capture, escrow, terms, sig
+hold | route | buyer | 1.00 | payment-signature, payment-identifier, order-root, authorized
+close | route | operator | 1.00 | loop1, receipt, polymerized, finalized, capture, void
+log | route | all | 1.00 | order-log, head, append-only
+no-bases | rule | all | 1.00 | bad_base, roots-only
+deadlines | rule | operator | 1.00 | captureDeadline, refundDeadline, reclaim
+one-receipt | rule | operator | 1.00 | receipt_used
+ucp | source | all | 1.00 | discovery, capabilities
+x402 | source | all | 1.00 | auth-capture, escrow
+bitcoin | source | all | 1.00 | hash-chain, proof
+p4 | source | all | 1.00 | hood-2004, predictive, participatory
+::end
+
+::node [id=banner type=meta confidence=1.00 scope=all updated=2026-11-27]
+::dense
+research|testnet|no-clinical
+::end
+::warning
+Read DISCLAIMER before any node.
+::end
+::edges
+->[:precedes] discover
+::end
+::end
+
+::node [id=discover type=route confidence=1.00 scope=all updated=2026-11-27]
+::dense
+well-known-ucp|catalog|profile|payment-handler
+::end
+::full
+GET /.well-known/ucp, GET /catalog. med3.md §2.
+::end
+::edges
+->[:requires] med3.md
+->[:precedes] offer
+->[:cites] ucp
+::end
+::end
+
+::node [id=offer type=route confidence=1.00 scope=buyer updated=2026-11-27]
+::dense
+402|auth-capture|escrow|terms|sig
+::end
+::full
+POST /checkout/{item} without PAYMENT-SIGNATURE. med3.md §3.1.
+::end
+::edges
+->[:precedes] hold
+->[:cites] x402
+::end
+::end
+
+::node [id=hold type=route confidence=1.00 scope=buyer updated=2026-11-27]
+::dense
+payment-signature|payment-identifier|order-root|authorized
+::end
+::full
+POST /checkout/{item} with PAYMENT-SIGNATURE. med3.md §3.2.
+::end
+::edges
+->[:requires] no-bases
+->[:requires] log
+->[:precedes] close
+::end
+::end
+
+::node [id=close type=route confidence=1.00 scope=operator updated=2026-11-27]
+::dense
+loop1|receipt|polymerized|finalized|capture|void
+::end
+::full
+POST /orders/{id}/close with the loop text. med3.md §4.
+::end
+::edges
+->[:requires] one-receipt
+->[:requires] deadlines
+->[:cites] p4
+::end
+::end
+
+::node [id=log type=route confidence=1.00 scope=all updated=2026-11-27]
+::dense
+order-log|head|append-only
+::end
+::full
+GET /log. med3.md §5.
+::end
+::edges
+->[:cites] bitcoin
+::end
+::end
+
+::node [id=no-bases type=rule confidence=1.00 scope=all updated=2026-11-27]
+::dense
+bad_base|roots-only
+::end
+::full
+med3.md §1.1.
+::end
+::edges
+::end
+::end
+
+::node [id=deadlines type=rule confidence=1.00 scope=operator updated=2026-11-27]
+::dense
+captureDeadline|refundDeadline|reclaim
+::end
+::full
+med3.md §4.
+::end
+::edges
+::end
+::end
+
+::node [id=one-receipt type=rule confidence=1.00 scope=operator updated=2026-11-27]
+::dense
+receipt_used
+::end
+::full
+med3.md §4.
+::end
+::edges
+::end
+::end
+
+::node [id=ucp type=source confidence=1.00 scope=all updated=2026-11-27]
+::dense
+discovery|capabilities
+::end
+::full
+docs/distil-sources.md.
+::end
+::edges
+::end
+::end
+
+::node [id=x402 type=source confidence=1.00 scope=all updated=2026-11-27]
+::dense
+auth-capture|escrow
+::end
+::full
+docs/distil-sources.md.
+::end
+::edges
+::end
+::end
+
+::node [id=bitcoin type=source confidence=1.00 scope=all updated=2026-11-27]
+::dense
+hash-chain|proof
+::end
+::full
+literature/bitcoin.pdf.
+::end
+::edges
+::end
+::end
+
+::node [id=p4 type=source confidence=1.00 scope=all updated=2026-11-27]
+::dense
+hood-2004|predictive|participatory
+::end
+::full
+literature/hood2004.json.
+::end
+::edges
+::end
+::end
