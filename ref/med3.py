@@ -411,7 +411,7 @@ def main(argv=None):
         ThreadingHTTPServer((a.host, a.port), handler(m)).serve_forever()
     elif a.cmd == "check":
         try:
-            receipt, verdict = read_back(Path(a.loop).read_text())
+            receipt, verdict = read_back(Path(a.loop).read_bytes().decode("utf-8", "replace"))
         except Refusal as r:
             print(r.code, r.detail, file=sys.stderr)
             return 1
