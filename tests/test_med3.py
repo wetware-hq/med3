@@ -277,12 +277,51 @@ class TestHTTP(Base):
         s, _, b = self.call("GET", "/log")
         self.assertEqual(len(json.loads(b)["roots"]), 1)
 
+    def test_tensor_route(self):
+        s, h, _ = self.call("POST", f"/checkout/{ITEM}", headers={"PAYMENT-SIGNATURE": self.pay()})
+        oid = h["Location"][8:]
+        s, h, b = self.call("GET", f"/orders/{oid}.tmap")
+        self.assertEqual((s, h["Content-Type"]), (200, "application/vnd.tmap"))
+        self.assertEqual(b, med3.tensor_map(self.m.get(oid)))
+        self.assertEqual(self.call("GET", "/orders/" + "0" * 32 + ".tmap")[0], 404)
+
     def test_errors(self):
         self.assertEqual(self.call("POST", "/checkout/print:nope")[0], 404)
         s, _, b = self.call("POST", f"/checkout/{ITEM}", headers={"PAYMENT-SIGNATURE": "x"})
         self.assertEqual((s, json.loads(b)["error"]), (400, "bad_payment"))
         self.assertEqual(self.call("GET", "/orders/" + "0" * 32)[0], 404)
         self.assertEqual(self.call("POST", f"/orders/{'0' * 32}/close", "x" * (med3.MAX_BODY + 1))[0], 413)
+
+
+class TestTensor(Base):
+    # The first order of Base, mapped; web ref/tensor.py unpack reads it and pack writes the same bytes.
+    ROOT = "82853335da378430d8590151b33e955fcce781e61fde181a4376cad8c852de84"
+
+    def test_order_map_is_pinned(self):  # M11
+        o = self.m.checkout(ITEM, self.pay())
+        t = med3.tensor_map(o)
+        self.assertEqual((len(t), med3.sha(t)), (413, self.ROOT))
+        self.assertEqual(t[:13], b"tmap1\x05order\x0f\x00")
+        self.assertIn(bytes.fromhex(o["root"]), t)
+        self.assertIsNone(med3.BASES_RUN.search(t.decode("latin1")))
+
+    def test_map_follows_status(self):
+        o = self.m.checkout(ITEM, self.pay())
+        receipt = med3.read_back(SAMPLE)[0]
+        self.print_row(receipt)
+        self.m.close(o["id"], SAMPLE)
+        t = med3.tensor_map(o)
+        self.assertNotEqual(med3.sha(t), self.ROOT)
+        self.assertIn(bytes.fromhex(receipt[2:] if receipt.startswith("0x") else receipt), t)
+        i = t.index(b"\x06status") + 9
+        self.assertEqual(t[i], 1)
+
+    def test_bad_order(self):
+        o = self.m.checkout(ITEM, self.pay())
+        for key, v in (("network", "solana:abc"), ("amount", str(1 << 64))):
+            bad = copy.deepcopy(o)
+            bad["order"][key] = v
+            self.refused("bad_order", med3.tensor_map, bad)
 
 
 class TestIndex(unittest.TestCase):

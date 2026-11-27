@@ -12,6 +12,7 @@ import hashlib
 import hmac
 import json
 import re
+import struct
 import sys
 import threading
 import time
@@ -31,7 +32,7 @@ WAIT = ("unprinted", "not_finalized", "holder_changed")  # close refusals that l
 CODES = (
     "bad_request", "bad_item", "unknown_token", "holder_changed", "bad_payment", "bad_offer", "expired",
     "replay", "bad_base", "no_order", "closed", "bad_receipt", "unprinted", "not_finalized", "stale_print",
-    "receipt_used", "bad_loop", "bad_head", "not_reads",
+    "receipt_used", "bad_loop", "bad_head", "not_reads", "bad_order",
 )
 
 
@@ -327,6 +328,43 @@ class Med3:
         return (ROOT / "ooc" / "med3.og").read_text()
 
 
+STATUS = ("authorized", "captured", "voided")
+NETWORK = re.compile(r"^eip155:([0-9]{1,19})$")
+
+
+def tensor_map(o):
+    """An order as a `tmap1` map of kind `order` (web contract §14, §9 here): roots, keys and amounts, never a base.
+
+    Tensors are uint8 byte strings (addresses, roots, the token id) and uint64 scalars, names ascending.
+    """
+    od = o["order"]
+    net = NETWORK.match(od["network"])
+    if not net:
+        raise Refusal("bad_order", f"{od['network']} is not an eip155 chain")
+    def u8(hexstr, n):
+        b = bytes.fromhex(hexstr[2:] if hexstr.startswith("0x") else hexstr)
+        if len(b) != n:
+            raise Refusal("bad_order", f"{hexstr} is not {n} bytes")
+        return (4, (n,), b)
+    def u64(v):
+        v = int(v)
+        if not 0 <= v < 1 << 64:
+            raise Refusal("bad_order", f"{v} is not a uint64")
+        return (23, (), struct.pack("<Q", v))
+    t = {
+        "amount": u64(od["amount"]), "asset": u8(od["asset"], 20), "block": u64(od["block"]), "buyer": u8(od["buyer"], 20),
+        "capture_deadline": u64(od["captureDeadline"]), "chain": u64(net.group(1)), "head": u8(o["head"], 32),
+        "log": u64(o["log"]), "prints": u64(od["prints"]), "receipt": u8(o["receipt"] or "00" * 32, 32),
+        "refund_deadline": u64(od["refundDeadline"]), "root": u8(o["root"], 32), "seller": u8(od["seller"], 20),
+        "status": (4, (), bytes([STATUS.index(o["status"])])), "token": u8(od["dna"][4:], 16),
+    }
+    out = [b"tmap1", bytes([5]), b"order", struct.pack("<H", len(t))]
+    for name in sorted(t):
+        code, shape, data = t[name]
+        out += [bytes([len(name)]), name.encode(), bytes([code, len(shape)]), struct.pack(f"<{len(shape)}I", *shape), data]
+    return b"".join(out)
+
+
 def public(o):
     return {k: v for k, v in o.items() if k != "body"}
 
@@ -334,9 +372,10 @@ def public(o):
 def handler(m):
     class H(BaseHTTPRequestHandler):
         def send(self, code, body, headers=()):
-            raw = body.encode() if isinstance(body, str) else canon(body)
+            raw = body if isinstance(body, bytes) else body.encode() if isinstance(body, str) else canon(body)
             self.send_response(code)
-            self.send_header("Content-Type", "text/plain; charset=utf-8" if isinstance(body, str) else "application/json")
+            kind = "application/vnd.tmap" if isinstance(body, bytes) else "text/plain; charset=utf-8" if isinstance(body, str) else "application/json"
+            self.send_header("Content-Type", kind)
             for k, v in headers:
                 self.send_header(k, v)
             self.send_header("Content-Length", str(len(raw)))
@@ -358,6 +397,8 @@ def handler(m):
                     return self.send(200, m.log())
                 if path == "/index":
                     return self.send(200, m.index())
+                if path.startswith("/orders/") and path.endswith(".tmap"):
+                    return self.send(200, tensor_map(m.get(path[8:-5])))
                 if path.startswith("/orders/"):
                     return self.send(200, public(m.get(path[8:])))
                 self.send(404, {"error": "bad_request", "detail": path})

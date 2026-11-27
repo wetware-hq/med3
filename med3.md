@@ -105,6 +105,7 @@ Errors are `{error, detail}` with one code. A body over 1 MiB is `413 bad_reques
 | `bad_loop` | not a loop1 file, or no verdict |
 | `bad_head` | the loop's head is not the chain over its blocks |
 | `not_reads` | the loop does not end in `expect=intact` on `op=reads` |
+| `bad_order` | the order has no §9 tensor map |
 
 The same payment id with the same payload returns the same order: retries are safe.
 
@@ -120,6 +121,30 @@ helix       dna:<token id>        what is known about it, pinned to the chain
 
 med3 writes nothing to helix or Bases. Helix pins a print through the chain row med3 closed on, so a helix `printed` claim and a med3 capture name the same receipt. The P4 loop of Hood (2004) maps onto the stack: predict (a helix hypothesis), personalise (a plan for one holder's chromosome), prevent a bad print from being paid for (a refuting read-back voids), participate (anyone can replay). [`docs/distil-sources.md`](docs/distil-sources.md) maps every source to the rule it gave.
 
+## §9 Tensor map
+
+An order has exactly one tensor map, the stack's universal form ([wetware-hq/web](https://github.com/wetware-hq/web) contract §14): a `tmap1` map of kind `order`, named tensors with TensorFlow `DataType` codes, little-endian, names ascending. `GET /orders/<id>.tmap` returns it as `application/vnd.tmap`; `sha256` of the bytes is the order's tensor root, which is not its order root.
+
+| Tensor | dtype | Shape | Value |
+|---|---|---|---|
+| `amount` | uint64 | `[]` | the held amount, in the asset's base units |
+| `asset` | uint8 | `[20]` | the asset contract |
+| `block` | uint64 | `[]` | the chain head the order was taken at |
+| `buyer` | uint8 | `[20]` | the payer |
+| `capture_deadline` | uint64 | `[]` | `captureDeadline` |
+| `chain` | uint64 | `[]` | the CAIP-2 `eip155` chain id |
+| `head` | uint8 | `[32]` | the §5 log head after this order |
+| `log` | uint64 | `[]` | the order's §5 log index |
+| `prints` | uint64 | `[]` | prints recorded when the order was taken |
+| `receipt` | uint8 | `[32]` | the closing receipt, zeros while `authorized` or when voided without one |
+| `refund_deadline` | uint64 | `[]` | `refundDeadline` |
+| `root` | uint8 | `[32]` | the order root (M2) |
+| `seller` | uint8 | `[20]` | the token holder paid on capture |
+| `status` | uint8 | `[]` | `0` authorized, `1` captured, `2` voided |
+| `token` | uint8 | `[16]` | the Bases token id, the helix locus |
+
+The map is a **view**: it holds roots, keys and amounts, never a base (§1.1), and no string. The payment id, the offer signature and the void reason stay in the JSON order. An order whose network is not `eip155:<id>` or whose amount does not fit a uint64 has no map and is refused `bad_order`.
+
 ## §8 Predicates
 
 | Id | Predicate |
@@ -134,3 +159,4 @@ med3 writes nothing to helix or Bases. Helix pins a print through the chain row 
 | M8 | a refuting read-back or a passed `captureDeadline` voids; a wait leaves the order `authorized` |
 | M9 | one receipt closes at most one order |
 | M10 | the loop head is computed exactly as web §12, so a web loop's `%head` checks under med3 |
+| M11 | an order's tensor map is web §14 `tmap1` bytes of kind `order`, holds no base, and follows the order's status |
