@@ -1,22 +1,33 @@
 %loop1 nt=64 sequence=d91697ffbab3fd41e0b46ab8b4501580add97ba7de2f22569a617b704d0089bc web=2aa87d9bf06d843a6a71b5a000c510ffe91ebc677844c24060dfc1201e9ba3b7
-%frame 0 think view=cgr k=1
-%cgr1 k=1
-%key  .:-=+*#%@
-#@
-%*
-%frame 1 hypothesis expect=intact k=1
-%cgr1 k=1
-%key  .:-=+*#%@
-#@
-%*
+%frame 0 think view=web size=2
+%view1 size=2 grid=2x2 web=2aa87d9bf06d843a6a71b5a000c510ffe91ebc677844c24060dfc1201e9ba3b7
+%ramp " .:-=+*#%@"
++--+
+|#@|
+|%*|
++--+
+%levels sha256:c87a24360036f6898110b34ffcd8ab85c647c41c74b3b2596963b1918d23784f
+%frame 1 hypothesis expect=intact size=2
+%view1 size=2 grid=2x2 web=2aa87d9bf06d843a6a71b5a000c510ffe91ebc677844c24060dfc1201e9ba3b7
+%ramp " .:-=+*#%@"
++--+
+|#@|
+|%*|
++--+
+%levels sha256:c87a24360036f6898110b34ffcd8ab85c647c41c74b3b2596963b1918d23784f
 %frame 2 act op=reads file=0 sha256=3e7f813188b691eb6795da84a4728c844f99db806e3946de53fc555a21a403e6 path=reads/print-1.fastq
-%frame 3 observe outcome=intact sequence=d91697ffbab3fd41e0b46ab8b4501580add97ba7de2f22569a617b704d0089bc used=12 dropped=0 verdict=supports
-%cgr1 k=1
-%key  .:-=+*#%@
-#@
-%*
-%diff k=1 changed=0/4
-%key  =+-!?
-==
-==
-%head d2fedd3f365423ae603775108abe35942d173010d8272f8f5dd0b6d2e04a8a3c
+%frame 3 observe outcome=intact sequence=d91697ffbab3fd41e0b46ab8b4501580add97ba7de2f22569a617b704d0089bc web=2aa87d9bf06d843a6a71b5a000c510ffe91ebc677844c24060dfc1201e9ba3b7 used=12 dropped=0 verdict=supports
+%view1 size=2 grid=2x2 web=2aa87d9bf06d843a6a71b5a000c510ffe91ebc677844c24060dfc1201e9ba3b7
+%ramp " .:-=+*#%@"
++--+
+|#@|
+|%*|
++--+
+%levels sha256:c87a24360036f6898110b34ffcd8ab85c647c41c74b3b2596963b1918d23784f
+%diff size=2 changed=0/4
+%key "=+-" same brighter darker
++--+
+|==|
+|==|
++--+
+%head 7894aa5b29b36c747da6d19e13efd4dd262d45b007d753ab1f76e7356f962d7e
