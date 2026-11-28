@@ -4,6 +4,7 @@ A cybernetic commerce engine for wetware. med3 sells prints of [Bases](https://g
 
 - [`med3.md`](med3.md) is the contract.
 - [`ref/med3.py`](ref/med3.py) is the reference server and checker, Python standard library only.
+- A K-line item ([`med3.md`](med3.md) §10) sells one print of each stage chromosome of a web `kline1` composition, captured once every stage reads back.
 - [`med3.json`](med3.json) is the catalog and escrow config (Base Sepolia).
 - [`docs/distil-sources.md`](docs/distil-sources.md) maps UCP, x402, Bitcoin, Web 3.0, P4 medicine and BIO to the rules they gave.
 - [`ooc/med3.og`](ooc/med3.og) is the route and rule index; `GET /index` serves it.

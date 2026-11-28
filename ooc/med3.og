@@ -1,11 +1,11 @@
 ::meta
 title: med3 route and rule index
-version: 2
-updated: 2026-11-27
+version: 3
+updated: 2026-11-28
 domain: med3|commerce|escrow
 scope: all
 governs: med3.md
-checksum: sha256:41c2012be94f4c6abcf921f2cbbac696ba7b0fbee5f4ab8233385710e986cf86
+checksum: sha256:f8f3172bd4dcd024e4730b6866194bf39e64b8613f0a692993c73a7e200055db
 ::end
 
 ::schema
@@ -22,6 +22,7 @@ offer | route | buyer | 1.00 | 402, auth-capture, escrow, terms, sig
 hold | route | buyer | 1.00 | payment-signature, payment-identifier, order-root, authorized
 close | route | operator | 1.00 | loop1, receipt, polymerized, finalized, capture, void
 log | route | all | 1.00 | order-log, head, append-only
+kline | route | buyer | 1.00 | kline1-head, stages, one-print-per-stage, receipts, refutes-stage, M12-M13
 tmap1 | system | all | 1.00 | tensor-map, .tmap, order-kind, view, no-base, tensorflow-DataType, M11
 no-bases | rule | all | 1.00 | bad_base, roots-only
 deadlines | rule | operator | 1.00 | captureDeadline, refundDeadline, reclaim
@@ -96,6 +97,20 @@ POST /orders/{id}/close with the loop text. med3.md §4.
 ->[:requires] one-receipt
 ->[:requires] deadlines
 ->[:cites] p4
+::end
+::end
+
+::node [id=kline type=route confidence=1.00 scope=buyer updated=2026-11-28]
+::dense
+kline1-head|stages|one-print-per-stage|receipts|refutes-stage|M12-M13
+::end
+::full
+POST /checkout/kline:{head}, then one POST /orders/{id}/close per stage. med3.md §10.
+::end
+::edges
+->[:requires] offer
+->[:requires] close
+->[:requires] one-receipt
 ::end
 ::end
 
