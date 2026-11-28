@@ -157,6 +157,14 @@ class Chain:
     def head(self):
         return int(self.read().get("block", 0))
 
+    def tokens(self, loci):
+        """Every token from one read of the view, so a check over several stages sees one snapshot."""
+        data = self.read().get("tokens", {})
+        for x in loci:
+            if x not in data:
+                raise Refusal("unknown_token", f"dna:{x} is not minted on this Bases")
+        return [data[x] for x in loci]
+
     def token(self, locus):
         t = self.read().get("tokens", {}).get(locus)
         if t is None:
@@ -190,7 +198,7 @@ class Med3:
         return it["stages"] if it["kind"] == "kline" else [it["locus"]]
 
     def held(self, it, when):
-        ts = [self.chain.token(x) for x in self.loci(it)]
+        ts = self.chain.tokens(self.loci(it))
         for x, t in zip(self.loci(it), ts):
             if t["holder"].lower() != it["seller"].lower():
                 raise Refusal("holder_changed", f"dna:{x} {when}")
