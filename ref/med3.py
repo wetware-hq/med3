@@ -302,6 +302,9 @@ class Med3:
             buyer = obj(payload.get("authorization")).get("from", "")
             if not isinstance(buyer, str) or not ADDRESS.match(buyer) or not payload.get("signature"):
                 raise Refusal("bad_payment", "payload.authorization.from and payload.signature are required")
+            want = [self.token_id(x) for x in it["stages"]] if it["kind"] == "kline" else self.token_id(it["locus"])
+            if terms.get("token") != want:
+                raise Refusal("bad_offer", "the offer names other chromosomes than the catalog item now does")
             self.held(it, "changed hands since the offer")
             a = p["accepted"]
             dna = [f"dna:{x}" for x in it["stages"]] if it["kind"] == "kline" else f"dna:{it['locus']}"
