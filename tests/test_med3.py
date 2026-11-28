@@ -335,5 +335,96 @@ class TestIndex(unittest.TestCase):
             self.assertIn(f"`{code}`", spec, code)
 
 
+
+L2 = "00000000000000000000000000000002"
+HEAD = "f76e899af7b38e51a51d838cac9905b029393b3c5a06361d6e102282bb5dee77"
+KITEM = f"kline:{HEAD}"
+
+
+class TestKline(Base):
+    """§10: a K-line sells one print of each stage chromosome, captured when every stage reads back."""
+
+    def setUp(self):
+        super().setUp()
+        self.cfg["items"].append({"kind": "kline", "kline": HEAD, "stages": [LOCUS, L2], "price": "3000000", "seller": SELLER, "title": "a K-line"})
+        self.state["tokens"][L2] = {"holder": SELLER, "prints": 4, "rows": []}
+        self.m = med3.Med3(self.cfg, med3.Chain(data=self.state), b"k" * 32, clock=self.clock)
+        self.o = self.m.checkout(KITEM, self.pay(self.m.offer(KITEM)))
+        self.r1 = med3.read_back(SAMPLE)[0]
+        self.text2 = SAMPLE.replace("print-1.fastq", "print-2.fastq")
+        blocks, _ = med3.loop_blocks(self.text2)
+        self.text2 = "".join(blocks) + "%head " + med3.loop_head(blocks) + "\n"
+        self.r2 = med3.read_back(self.text2)[0]
+
+    def row(self, locus, receipt, prints, finalized=True):
+        t = self.state["tokens"][locus]
+        t["prints"] = prints
+        self.state["block"] += 1
+        t["rows"].append({"receipt": receipt, "prints": prints, "holder": SELLER, "block": self.state["block"], "finalized": finalized})
+
+    def test_catalog_and_order(self):  # M12
+        k = [i for i in self.m.catalog()["items"] if i["id"] == KITEM][0]
+        self.assertEqual((k["kind"], k["kline"], k["dna"]), ("kline", HEAD, [f"dna:{LOCUS}", f"dna:{L2}"]))
+        od = self.o["order"]
+        self.assertEqual((od["kline"], od["prints"], self.o["receipts"]), (HEAD, [0, 4], [None, None]))
+        self.assertIn("xyz.getwetware.med3.kline", self.m.profile()["ucp"]["capabilities"])
+
+    def test_captured_only_when_every_stage_supports(self):  # M13
+        self.assertNotEqual(self.r1, self.r2)
+        self.row(LOCUS, self.r1, 1)
+        o = self.m.close(self.o["id"], SAMPLE)
+        self.assertEqual((o["status"], o["receipts"]), ("authorized", [self.r1, None]))
+        self.refused("receipt_used", self.m.close, self.o["id"], SAMPLE)
+        self.refused("unprinted", self.m.close, self.o["id"], self.text2)
+        self.row(L2, self.r2, 5)
+        o = self.m.close(self.o["id"], self.text2)
+        self.assertEqual((o["status"], o["reason"], o["receipts"]), ("captured", "supports", [self.r1, self.r2]))
+
+    def test_one_refuting_stage_voids(self):  # M13
+        text = refuting(self.text2)
+        self.row(L2, med3.read_back(text)[0], 5)
+        o = self.m.close(self.o["id"], text)
+        self.assertEqual((o["status"], o["reason"]), ("voided", "refutes:1"))
+
+    def test_stale_stage(self):
+        self.state["tokens"][L2]["rows"].append({"receipt": self.r2, "prints": 4, "holder": SELLER, "block": 101, "finalized": True})
+        self.refused("stale_print", self.m.close, self.o["id"], self.text2)
+
+    def test_every_stage_held(self):
+        self.state["tokens"][L2]["holder"] = OTHER
+        self.refused("holder_changed", self.m.offer, KITEM)
+
+    def test_bad_catalog(self):
+        for bad in [{"stages": []}, {"stages": [LOCUS, LOCUS]}, {"kline": "00"}, {"stages": ["xyz"]}]:
+            cfg = json.loads((ROOT / "med3.json").read_text())
+            cfg["items"].append({"kind": "kline", "kline": HEAD, "stages": [LOCUS], "price": "1", "seller": SELLER} | bad)
+            with self.assertRaises(ValueError):
+                med3.Med3(cfg, med3.Chain(data=self.state), b"k" * 32)
+
+    def test_catalog_edit_voids_old_offers(self):
+        offer = self.m.offer(KITEM)
+        self.cfg["items"][-1]["stages"] = [LOCUS]
+        self.state["tokens"]["00000000000000000000000000000003"] = {"holder": SELLER, "prints": 0, "rows": []}
+        m = med3.Med3(self.cfg, med3.Chain(data=self.state), b"k" * 32, clock=self.clock)
+        self.refused("bad_offer", m.checkout, KITEM, self.pay(offer, pid="pay-0000000000000009"))
+
+    def test_missing_stage_does_not_block_refutation(self):
+        text = refuting(self.text2)
+        self.row(L2, med3.read_back(text)[0], 5)
+        del self.state["tokens"][LOCUS]
+        self.assertEqual(self.m.close(self.o["id"], text)["status"], "voided")
+
+    def test_one_snapshot(self):
+        reads = []
+        chain = med3.Chain(data=self.state)
+        orig = chain.read
+        chain.read = lambda: reads.append(1) or orig()
+        self.m.chain = chain
+        self.m.offer(KITEM)
+        self.assertEqual(len(reads), 1)
+
+    def test_no_order_map_yet(self):
+        self.refused("bad_order", med3.tensor_map, self.o)
+
 if __name__ == "__main__":
     unittest.main()

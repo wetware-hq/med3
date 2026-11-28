@@ -117,6 +117,7 @@ web         .dna, loop1           the sequence, and the read-back that proves a 
 bases       token, prints, head   who holds it, and each print's receipt on chain
 med3        offer, hold, close    who pays for a print, and when the money moves
 helix       dna:<token id>        what is known about it, pinned to the chain
+web kline1  K-line head           a composition of stage webs, sold as one print per stage (§10)
 ```
 
 med3 writes nothing to helix or Bases. Helix pins a print through the chain row med3 closed on, so a helix `printed` claim and a med3 capture name the same receipt. The P4 loop of Hood (2004) maps onto the stack: predict (a helix hypothesis), personalise (a plan for one holder's chromosome), prevent a bad print from being paid for (a refuting read-back voids), participate (anyone can replay). [`docs/distil-sources.md`](docs/distil-sources.md) maps every source to the rule it gave.
@@ -160,3 +161,19 @@ The map is a **view**: it holds roots, keys and amounts, never a base (§1.1), a
 | M9 | one receipt closes at most one order |
 | M10 | the loop head is computed exactly as web §12, so a web loop's `%head` checks under med3 |
 | M11 | an order's tensor map is web §14 `tmap1` bytes of kind `order`, holds no base, and follows the order's status |
+| M12 | a K-line item's seller holds every stage chromosome at the offer and at checkout, and its order binds the K-line head and every stage's print count |
+| M13 | a K-line order is captured only when every stage has a finalized, newer print by its seller whose read-back supports; one refuting stage voids it |
+
+## §10 K-line
+
+A K-line is a composition function over shallow webs ([`web` §17](https://github.com/wetware-hq/web/blob/main/docs/follow-agent-contract.md)): an ordered list of stage webs, named by its `kline1` head. Each stage is a web, so it has a `dna1` sequence and can be a Bases chromosome. Its representation on chain is therefore the ordered list of its stage token ids, and its artefact is one print of each stage. med3 sells that artefact as one item.
+
+```json
+{"kind": "kline", "kline": "<64-hex kline1 head>", "stages": ["<locus>", "..."], "price": "3000000", "seller": "0x...", "title": "..."}
+```
+
+- **Catalog.** The id is `kline:<head>`. `stages` lists 1 to 64 distinct loci in stage order. The catalog entry shows `kline`, and `dna` and `token` as lists, one per stage. The UCP profile has the capability `xyz.getwetware.med3.kline`.
+- **Offer and hold.** These follow §3, except that `extensions.med3` binds `token` and `prints` as lists, one per stage. The seller must hold every stage at the offer and at checkout, or the server refuses `holder_changed`. The order adds `kline`, takes `dna`, `token` and `prints` as lists, and carries `receipts`, one per stage, starting as `null`.
+- **Close.** Each stage closes separately. A `close` call takes one stage's read-back loop and runs §4 against the stages that are still open. The stage is the one whose token has a `Polymerized` row carrying the loop's head. Step 6 compares that row with that stage's `prints`. A supporting read-back records the receipt for its stage, and the order stays `authorized` until every stage has one; it is then `captured`, reason `supports`. A refuting read-back voids the whole order, with reason `refutes:<stage>`. A receipt closes at most one stage of one order (M9).
+- **Not a proof of the K-line.** med3 checks that each print reads back as its chromosome. Whether the stages compose, and whether the K-line raised utility, is checked by replaying the `kline1` record in web, which needs the webs. med3 never holds them.
+- **No tensor map yet.** A K-line order's stages give some tensors a different rank than §9's `order` map defines, so `GET /orders/<id>.tmap` refuses `bad_order` until a map for it is defined.

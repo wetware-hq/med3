@@ -23,6 +23,8 @@ ROOT = Path(__file__).resolve().parent.parent
 TAG = b"med3"
 LOOP_TAG = b"loop1"
 LOCUS = re.compile(r"^[0-9a-f]{32}$")
+KLINE = re.compile(r"^[0-9a-f]{64}$")  # a web kline1 head (web contract §17)
+MAX_STAGES = 64
 BYTES32 = re.compile(r"^0x[0-9a-f]{64}$")
 ADDRESS = re.compile(r"^0x[0-9a-fA-F]{40}$")
 PAYMENT_ID = re.compile(r"^[A-Za-z0-9_-]{16,128}$")
@@ -155,6 +157,14 @@ class Chain:
     def head(self):
         return int(self.read().get("block", 0))
 
+    def tokens(self, loci):
+        """Every token from one read of the view, so a check over several stages sees one snapshot."""
+        data = self.read().get("tokens", {})
+        for x in loci:
+            if x not in data:
+                raise Refusal("unknown_token", f"dna:{x} is not minted on this Bases")
+        return [data[x] for x in loci]
+
     def token(self, locus):
         t = self.read().get("tokens", {}).get(locus)
         if t is None:
@@ -167,12 +177,32 @@ class Med3:
         self.c, self.chain, self.key, self.clock, self.base = config, chain, key, clock, base
         self.items = {}
         for it in config["items"]:
-            if it.get("kind") != "print" or not LOCUS.match(it.get("locus", "")) or not ADDRESS.match(it.get("seller", "")):
+            if not ADDRESS.match(it.get("seller", "")):
+                raise ValueError(f"bad catalog item {it}")
+            if it.get("kind") == "print" and LOCUS.match(it.get("locus", "")):
+                key = f"print:{it['locus']}"
+            elif it.get("kind") == "kline" and KLINE.match(it.get("kline", "")) and isinstance(it.get("stages"), list) \
+                    and 1 <= len(it["stages"]) <= MAX_STAGES and all(isinstance(x, str) and LOCUS.match(x) for x in it["stages"]) \
+                    and len(set(it["stages"])) == len(it["stages"]):
+                key = f"kline:{it['kline']}"
+            else:
                 raise ValueError(f"bad catalog item {it}")
             no_bases(it)
-            self.items[f"print:{it['locus']}"] = it
+            self.items[key] = it
         self.orders, self.roots, self.payments, self.receipts = {}, [], {}, {}
         self.lock = threading.Lock()
+
+    @staticmethod
+    def loci(it):
+        """The chromosomes an item sells one print of each: one for a print, every stage for a K-line."""
+        return it["stages"] if it["kind"] == "kline" else [it["locus"]]
+
+    def held(self, it, when):
+        ts = self.chain.tokens(self.loci(it))
+        for x, t in zip(self.loci(it), ts):
+            if t["holder"].lower() != it["seller"].lower():
+                raise Refusal("holder_changed", f"dna:{x} {when}")
+        return ts
 
     def token_id(self, locus):
         return f"{self.c['network']}/erc721:{self.c['bases']}/{int(locus, 16)}"
@@ -185,16 +215,24 @@ class Med3:
                 "version": "draft",
                 "services": {"xyz.getwetware.med3": [{"version": v, "spec": "https://github.com/wetware-hq/med3/blob/main/med3.md",
                                                        "transport": "rest", "endpoint": self.base}]},
-                "capabilities": {"xyz.getwetware.med3.print": [{"version": v, "spec": "https://github.com/wetware-hq/med3/blob/main/med3.md#3-print"}]},
+                "capabilities": {"xyz.getwetware.med3.print": [{"version": v, "spec": "https://github.com/wetware-hq/med3/blob/main/med3.md#3-print"}],
+                                 "xyz.getwetware.med3.kline": [{"version": v, "spec": "https://github.com/wetware-hq/med3/blob/main/med3.md#10-k-line"}]},
                 "payment_handlers": {"org.x402.auth-capture": [{"version": "2", "network": self.c["network"],
                                                                 "asset": self.c["asset"]["address"], "paymentFlow": "escrow"}]},
             }
         }
 
     def catalog(self):
-        return {"items": [{"id": k, "kind": "print", "dna": f"dna:{it['locus']}", "token": self.token_id(it["locus"]),
-                           "title": it.get("title", ""), "price": {"amount": it["price"], "asset": self.c["asset"]["address"],
-                                                                  "network": self.c["network"]}} for k, it in self.items.items()]}
+        out = []
+        for k, it in self.items.items():
+            e = {"id": k, "kind": it["kind"], "title": it.get("title", ""),
+                 "price": {"amount": it["price"], "asset": self.c["asset"]["address"], "network": self.c["network"]}}
+            if it["kind"] == "kline":
+                e |= {"kline": it["kline"], "dna": [f"dna:{x}" for x in it["stages"]], "token": [self.token_id(x) for x in it["stages"]]}
+            else:
+                e |= {"dna": f"dna:{it['locus']}", "token": self.token_id(it["locus"])}
+            out.append(e)
+        return {"items": out}
 
     def item(self, item_id):
         it = self.items.get(item_id)
@@ -208,9 +246,7 @@ class Med3:
     def offer(self, item_id):
         """The 402 body: one `auth-capture` escrow requirement, plus the med3 terms it binds."""
         it, now = self.item(item_id), int(self.clock())
-        t = self.chain.token(it["locus"])
-        if t["holder"].lower() != it["seller"].lower():
-            raise Refusal("holder_changed", f"dna:{it['locus']} is held by {t['holder']}, not the seller")
+        ts = self.held(it, "is not held by the seller")
         e = self.c["escrow"]
         accepted = {
             "scheme": "auth-capture", "network": self.c["network"], "amount": it["price"],
@@ -224,7 +260,10 @@ class Med3:
                 "feeRecipient": it["seller"], "assetTransferMethod": e["assetTransferMethod"],
             },
         }
-        ext = {"item": item_id, "token": self.token_id(it["locus"]), "prints": t["prints"], "issued": now}
+        if it["kind"] == "kline":
+            ext = {"item": item_id, "token": [self.token_id(x) for x in it["stages"]], "prints": [t["prints"] for t in ts], "issued": now}
+        else:
+            ext = {"item": item_id, "token": self.token_id(it["locus"]), "prints": ts[0]["prints"], "issued": now}
         return {
             "x402Version": 2, "error": "PAYMENT-SIGNATURE header is required",
             "resource": {"url": f"{self.base}/checkout/{item_id}", "description": it.get("title", item_id), "mimeType": "application/json"},
@@ -263,20 +302,26 @@ class Med3:
             buyer = obj(payload.get("authorization")).get("from", "")
             if not isinstance(buyer, str) or not ADDRESS.match(buyer) or not payload.get("signature"):
                 raise Refusal("bad_payment", "payload.authorization.from and payload.signature are required")
-            t = self.chain.token(it["locus"])
-            if t["holder"].lower() != it["seller"].lower():
-                raise Refusal("holder_changed", f"dna:{it['locus']} changed hands since the offer")
+            want = [self.token_id(x) for x in it["stages"]] if it["kind"] == "kline" else self.token_id(it["locus"])
+            if terms.get("token") != want:
+                raise Refusal("bad_offer", "the offer names other chromosomes than the catalog item now does")
+            self.held(it, "changed hands since the offer")
             a = p["accepted"]
+            dna = [f"dna:{x}" for x in it["stages"]] if it["kind"] == "kline" else f"dna:{it['locus']}"
             order = {
-                "med3": self.c["med3"], "item": item_id, "dna": f"dna:{it['locus']}", "token": terms["token"],
+                "med3": self.c["med3"], "item": item_id, "dna": dna, "token": terms["token"],
                 "buyer": buyer, "seller": a["payTo"], "amount": a["amount"], "asset": a["asset"], "network": a["network"],
                 "prints": terms["prints"], "block": self.chain.head(), "captureDeadline": a["extra"]["captureDeadline"],
                 "refundDeadline": a["extra"]["refundDeadline"], "payment": pid, "offer": ext["sig"],
             }
+            if it["kind"] == "kline":
+                order["kline"] = it["kline"]
             root = sha(canon(order))
             self.roots.append(root)
             o = {"id": root[:32], "root": root, "order": order, "status": "authorized", "body": body,
                  "log": len(self.roots) - 1, "head": log_head(self.roots), "receipt": None, "reason": None}
+            if it["kind"] == "kline":
+                o["receipts"] = [None] * len(it["stages"])
             self.orders[o["id"]] = o
             self.payments[pid] = o["id"]
             return o
@@ -303,17 +348,33 @@ class Med3:
                 raise Refusal("bad_receipt", receipt)
             if receipt in self.receipts and self.receipts[receipt] != order_id:
                 raise Refusal("receipt_used", f"receipt closed order {self.receipts[receipt]}")
-            rows = [r for r in self.chain.token(od["dna"][4:]).get("rows", []) if r.get("receipt", "").lower() == receipt]
-            if not rows:
-                raise Refusal("unprinted", "no Polymerized row carries this receipt")
-            row = rows[0]
-            if row["prints"] <= od["prints"] or int(row.get("block", 0)) <= od["block"]:
+            kline = "receipts" in o
+            if kline and receipt in o["receipts"]:
+                raise Refusal("receipt_used", "this receipt already closed a stage of this order")
+            loci = [x[4:] for x in od["dna"]] if kline else [od["dna"][4:]]
+            prints = od["prints"] if kline else [od["prints"]]
+            open_ = [j for j in range(len(loci)) if not kline or o["receipts"][j] is None]
+            view = self.chain.read().get("tokens", {})
+            hits = [(j, r) for j in open_ for r in view.get(loci[j], {}).get("rows", []) if r.get("receipt", "").lower() == receipt]
+            if not hits:
+                raise Refusal("unprinted", "no Polymerized row of an open stage carries this receipt")
+            j, row = hits[0]
+            if row["prints"] <= prints[j] or int(row.get("block", 0)) <= od["block"]:
                 raise Refusal("stale_print", f"print {row['prints']} at block {row.get('block')} is not after the order (block {od['block']})")
             if not row.get("finalized"):
                 raise Refusal("not_finalized", f"block {row.get('block')} is not final")
             if row.get("holder", "").lower() != od["seller"].lower():
                 raise Refusal("holder_changed", "the print was made while someone else held the token")
-            return self._final(o, "captured" if verdict == "supports" else "voided", verdict, receipt)
+            if not kline:
+                return self._final(o, "captured" if verdict == "supports" else "voided", verdict, receipt)
+            if verdict != "supports":
+                o["receipts"][j] = receipt
+                return self._final(o, "voided", f"refutes:{j}", receipt)
+            o["receipts"][j] = receipt
+            self.receipts[receipt] = o["id"]
+            if all(o["receipts"]):
+                return self._final(o, "captured", "supports", None)
+            return o
 
     def _final(self, o, status, reason, receipt):
         o.update(status=status, reason=reason, receipt=receipt)
@@ -338,6 +399,8 @@ def tensor_map(o):
     Tensors are uint8 byte strings (addresses, roots, the token id) and uint64 scalars, names ascending.
     """
     od = o["order"]
+    if "receipts" in o:
+        raise Refusal("bad_order", "a K-line order has no order tensor map yet (§10)")
     net = NETWORK.match(od["network"])
     if not net:
         raise Refusal("bad_order", f"{od['network']} is not an eip155 chain")
