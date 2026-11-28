@@ -84,7 +84,7 @@ class TestLoop(Base):
         self.refused("not_reads", med3.read_back, "".join(blocks) + "%head " + med3.loop_head(blocks) + "\n")
 
     def test_incomplete_frame(self):
-        for extra in ("%frame 4\n", "%frame 9 think view=cgr k=1\n"):
+        for extra in ("%frame 4\n", "%frame 9 think view=web size=1\n"):
             blocks, _ = med3.loop_blocks(SAMPLE)
             blocks.append(extra)
             self.refused("bad_loop", med3.read_back, "".join(blocks) + "%head " + med3.loop_head(blocks) + "\n")
