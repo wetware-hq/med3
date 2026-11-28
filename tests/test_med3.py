@@ -401,6 +401,28 @@ class TestKline(Base):
             with self.assertRaises(ValueError):
                 med3.Med3(cfg, med3.Chain(data=self.state), b"k" * 32)
 
+    def test_catalog_edit_voids_old_offers(self):
+        offer = self.m.offer(KITEM)
+        self.cfg["items"][-1]["stages"] = [LOCUS]
+        self.state["tokens"]["00000000000000000000000000000003"] = {"holder": SELLER, "prints": 0, "rows": []}
+        m = med3.Med3(self.cfg, med3.Chain(data=self.state), b"k" * 32, clock=self.clock)
+        self.refused("bad_offer", m.checkout, KITEM, self.pay(offer, pid="pay-0000000000000009"))
+
+    def test_missing_stage_does_not_block_refutation(self):
+        text = refuting(self.text2)
+        self.row(L2, med3.read_back(text)[0], 5)
+        del self.state["tokens"][LOCUS]
+        self.assertEqual(self.m.close(self.o["id"], text)["status"], "voided")
+
+    def test_one_snapshot(self):
+        reads = []
+        chain = med3.Chain(data=self.state)
+        orig = chain.read
+        chain.read = lambda: reads.append(1) or orig()
+        self.m.chain = chain
+        self.m.offer(KITEM)
+        self.assertEqual(len(reads), 1)
+
     def test_no_order_map_yet(self):
         self.refused("bad_order", med3.tensor_map, self.o)
 
