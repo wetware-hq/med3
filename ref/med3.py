@@ -351,7 +351,8 @@ class Med3:
             loci = [x[4:] for x in od["dna"]] if kline else [od["dna"][4:]]
             prints = od["prints"] if kline else [od["prints"]]
             open_ = [j for j in range(len(loci)) if not kline or o["receipts"][j] is None]
-            hits = [(j, r) for j in open_ for r in self.chain.token(loci[j]).get("rows", []) if r.get("receipt", "").lower() == receipt]
+            view = self.chain.read().get("tokens", {})
+            hits = [(j, r) for j in open_ for r in view.get(loci[j], {}).get("rows", []) if r.get("receipt", "").lower() == receipt]
             if not hits:
                 raise Refusal("unprinted", "no Polymerized row of an open stage carries this receipt")
             j, row = hits[0]
